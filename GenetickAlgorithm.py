@@ -22,17 +22,18 @@ class GenetickAlgorithm:
         self._filter_end = filter_end
         self._chance_mutation = chance_mutation
         self._mutation_rate = mutation_rate
+        self._rng = np.random.default_rng()
 
     def fit(self) -> np.ndarray:
-        flock = [np.random.randint(1, len(self._employees) + 1, size=len(self._task_lvl)) for _ in range(self._num_flock)]
-        flg = [0]
-        while self.check_filter(flg[0]):
-            check, flg = self.fitness_check(flock)
-            result = flock[flg[1]]
+        flock = self._rng.integers(1, len(self._employees) + 1, size=(self._num_flock, len(self._task_lvl)))
+        max_return, max_iter = 0, 0
+        while self.check_filter(max_return):
+            check, (max_return, max_iter) = self.fitness_check(flock)
+            result = flock[max_iter]
             flock = self.selection(check, flock)
             self._counter_iter += 1
             if self._counter_iter % 5 == 0:
-                print(check[flg[1]], " - ", ' '.join(map(str, result)), flush=True)
+                print(check[max_iter], " - ", ' '.join(map(str, result)), flush=True)
         return result
 
     def fitness_check(self, group):
@@ -55,54 +56,37 @@ class GenetickAlgorithm:
         return sample_return, [max_return, iter_max]
     
     def selection(self, check, flock) -> np.ndarray:
-        flock_return = np.array([], list)
+        flock_return = np.zeros(shape=flock.shape, dtype=int)
         steck = np.array([], int)
-        while len(flock_return) < len(flock):
-            indexes = []
-            while len(indexes) < self._num_sample_selection:
-                index = np.random.randint(0, len(flock))
-                if index not in indexes:
-                    indexes.append(index)
-            ind = check[indexes].argmax()
-            if indexes[ind] not in steck:
-                steck = np.append(steck, indexes[ind])
-                #steck.append(indexes[ind])# = np.append(steck, flock[indexes[ind]])
-                                            # steck.append(flock[indexes[ind]])
-            if len(steck) >= 2:
-                result = self.crossing([flock[steck[0]], flock[steck[1]]])
-                mut_1 = self.mutation(result[0])
-                mut_2 = self.mutation(result[1])
-                if len(flock_return) == 0:
-                    flock_return = np.append(flock_return, mut_1)
-                    flock_return = np.vstack((flock_return, mut_2))
-                else:
-                    flock_return = np.vstack((flock_return, mut_1))
-                    flock_return = np.vstack((flock_return, mut_2))
-                steck = np.array([], int)
+        iter_flock_return = 0
+        for _ in range(self._num_flock // 2):
+            indexes = self._rng.choice(range(0, len(flock)), size=(2, self._num_sample_selection), replace=False)
+            ind, ind_2 = check[indexes[0]].argmax(), check[indexes[1]].argmax()
+            steck = np.array([indexes[0][ind], indexes[1][ind_2]], int)
+            result = self.crossing([flock[steck[0]], flock[steck[1]]])
+            mut_1, mut_2 = self.mutation(result[0]), self.mutation(result[1])
+            flock_return[iter_flock_return] = mut_1
+            flock_return[iter_flock_return + 1] = mut_2
+            iter_flock_return += 2
+
+            steck = np.array([], int)
         return flock_return
 
     def crossing(self, steck) -> np.ndarray:
-        #point = np.random.randint(1, len(steck[0]))
-        #a_r, b_r = np.copy(steck[0]), np.copy(steck[1])
-        #a_r[point:], b_r[point:] = steck[1][point:], steck[0][point:]
-        #return np.array([a_r, b_r])
-        first, second = 0, 0
-        while first == second:
-            first, second = np.random.randint(1, len(steck[0]), 2)
-        if first > second:
-            first, second = second, first
+        first, second = self._rng.choice(range(1, len(steck[0])), size=2, replace=False)
+        if first > second: first, second = second, first
         a_r, b_r = np.copy(steck[0]), np.copy(steck[1])
         a_r[first:second], b_r[first:second] = steck[1][first:second], steck[0][first:second]
         return np.array([a_r, b_r])
 
     def mutation(self, sample) -> np.ndarray:
         samp = sample.copy()
-        if np.random.randint(0, 100) < self._chance_mutation * 100:
-            for iter_1, key in enumerate(samp):
-                if np.random.randint(0, 100) < self._mutation_rate * 100:
-                    samp[iter_1] = np.random.randint(1, len(self._employees) + 1)
+        if self._rng.integers(0, 100) < self._chance_mutation * 100:
+            mask = self._rng.integers(0, 100, len(sample)) <= self._mutation_rate * 100
+            mask_2 = self._rng.integers(1, len(self._employees) + 1, len(mask))
+            samp = np.where(mask, mask_2, samp)
         return samp
-        
+
 
     def check_filter(self, res) -> bool:
         if self._counter_iter > self._max_iter: # res > self._filter_end or 
